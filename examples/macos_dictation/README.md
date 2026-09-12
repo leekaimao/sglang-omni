@@ -120,8 +120,12 @@ Other finished outcomes (empty recognition, imported files, skipped/failed inser
 and errors) wait three seconds before fading. Active processing and delivery stay visible.
 Hovering keeps it visible; leaving starts the fade. Moving back during the fade
 restores it. These durations are configured UI timings, not measured latency.
-The result window retains the current transcript and detailed notices until the
-next round, cancellation, or app exit.
+An already open result window fades over 0.3 seconds after a completed round,
+holding for three seconds after normal delivery or five seconds for other finished
+outcomes. It stays visible during processing and delivery, independently of bar hover.
+Explicitly reopening results after completion keeps the window visible for reading
+and copying. Hiding either window retains the transcript and detailed notices until
+the next round, cancellation, or app exit. Reduce Motion skips the fade animation.
 
 After processing, the bar shows the current round's ASR and, if attempted, LLM
 durations. The result window also shows total processing time and whether each
@@ -222,6 +226,8 @@ Run the complete deterministic regression entry point on an Apple Silicon Mac:
 
 ```bash
 bash examples/macos_dictation/verify_all_test.sh
+bash examples/macos_dictation/result_window_feedback_test.sh
+bash examples/macos_dictation/capture_stop_test.sh
 bash examples/macos_dictation/local_setup_test.sh
 bash examples/macos_dictation/lifecycle_test.sh
 bash examples/macos_dictation/build_client.sh

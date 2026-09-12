@@ -50,6 +50,10 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
     private var recordingMenuItems: [NSMenuItem] = []
     private var phaseObserver: AnyCancellable?
     private var feedbackObserver: AnyCancellable?
+    private lazy var resultFeedback = ResultWindowFeedback(
+        session: state.session, insertion: state.insertion,
+        reduceMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion })
+    private var resultFeedbackObserver: AnyCancellable?
     private var escapeMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -69,13 +73,20 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
         phaseObserver = state.session.$phase.removeDuplicates().sink { [weak self] phase in
             guard let self else { return }
             if phase == .failed { self.state.insertion.abandon("本轮未完成，没有自动回填。") }
-            self.item?.button?.image = NSImage(systemSymbolName: phase == .recording ? "mic.fill" : "mic.circle",
-                                               accessibilityDescription: "Omni 听写：\(phase.rawValue)")
+            self.item?.button?.image = OmniBrand.menuImage(recording: phase == .recording)
+            self.item?.button?.setAccessibilityLabel("Omni 听写：\(phase.rawValue)")
+            self.item?.button?.toolTip = "Omni 听写 · \(phase.rawValue)"
         }
         feedbackObserver = state.feedback.$opacity.removeDuplicates().sink { [weak self] opacity in
             guard let self else { return }
             if opacity <= 0 { self.panel?.orderOut(nil) }
             else { self.showPanel(opacity: opacity) }
+        }
+        resultFeedbackObserver = resultFeedback.$opacity.removeDuplicates().sink { [weak self] opacity in
+            // Completion may hide an existing window, but must never open a closed one.
+            guard let window = self?.resultWindow, window.isVisible else { return }
+            window.alphaValue = opacity
+            if opacity <= 0 { window.orderOut(nil) }
         }
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self else { return event }
@@ -172,7 +183,8 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(entry("设置…", #selector(showSettings), key: ","))
         menu.addItem(entry("退出 Omni 听写", #selector(quit), key: "q"))
         status.menu = menu
-        status.button?.toolTip = "Omni 听写 · 本地 MLX"
+        status.button?.image = OmniBrand.menuImage(recording: false)
+        status.button?.toolTip = "Omni 听写 · 待录音"
         item = status
     }
 
@@ -193,6 +205,8 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
             resultWindow = window
         }
         NSApp.activate(ignoringOtherApps: true)
+        resultFeedback.show()
+        resultWindow?.alphaValue = 1
         resultWindow?.makeKeyAndOrderFront(nil)
     }
 

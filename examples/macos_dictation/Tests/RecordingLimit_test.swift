@@ -35,12 +35,12 @@ struct RecordingLimitTest {
             buffer.floatChannelData![0].update(repeating: amplitude, count: Int(buffer.frameLength))
             capture.append(buffer)
         }
-        let samples = capture.finish()
+        let samples = capture.finish().samples
         expect(samples.count == Int(rate * 60), "Capture must retain exactly one minute and discard later samples")
         expect(samples[Int(rate * 35)] == 0.2 && samples[Int(rate * 55)] == 0.3,
                "The second half of a minute must not be truncated at the old limit")
         capture.append(buffer)
-        expect(capture.finish().isEmpty, "Finished capture must not accept later audio")
+        expect(capture.finish().samples.isEmpty, "Finished capture must not accept later audio")
 
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("omni-duration-test-\(UUID())")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -127,11 +127,13 @@ final class CaptureBuffer: @unchecked Sendable {
         return (meter, failure)
     }
 
-    func finish() -> [Float] {
+    func finish() -> (samples: [Float], failure: String?) {
         lock.lock()
         defer { lock.unlock() }
         active = false
-        let result = samples
+        // Snapshot failure and samples under the same lock; the session timer may
+        // not have observed a device change that arrived immediately before stop.
+        let result = (samples: samples, failure: failure)
         samples = []
         meter = 0
         return result
@@ -181,9 +183,11 @@ final class MicrophoneRecorder: AudioRecording {
 
     func stop() throws -> Data {
         guard let captured else { throw DictationError("没有正在进行的录音。") }
-        let samples = captured.finish()
+        let recording = captured.finish()
         let sampleRate = rate
         cancel()
+        if let failure = recording.failure { throw DictationError(failure) }
+        let samples = recording.samples
         guard samples.count >= Int(sampleRate * 0.15), samples.contains(where: { abs($0) > 0.00001 }) else {
             throw DictationError("没有录到有效声音，请检查麦克风和输入音量后重试。")
         }

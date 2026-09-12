@@ -296,47 +296,65 @@ struct ClientSettingsView: View {
 }
 
 struct ClientFloatingView: View {
-    static let size = CGSize(width: 380, height: 64)
+    static let size = CGSize(width: 380, height: 72)
     @ObservedObject var model: DictationSession
     @ObservedObject var state: ClientState
     @ObservedObject var insertion: DictationInsertion
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: insertion.didInsert ? "checkmark.circle" : (model.phase == .recording ? "waveform" : "text.bubble"))
-                .font(.system(size: 23)).foregroundStyle(.mint)
+        HStack(spacing: 12) {
+            OmniLogoView().frame(width: 30, height: 40)
             VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text("Omni").font(.system(size: 16, weight: .heavy)).italic()
+                    Text(title).font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                }
                 if model.phase == .recording {
-                    ProgressView(value: model.level).progressViewStyle(.linear).tint(.mint)
-                        .frame(width: 135).accessibilityLabel("麦克风音量")
+                    HStack(spacing: 10) {
+                        OmniAudioLevel(level: model.level)
+                        Text(String(format: "%02d:%02d", Int(model.elapsed) / 60, Int(model.elapsed) % 60))
+                            .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                            .foregroundStyle(.white.opacity(0.7))
+                            .accessibilityLabel("已录音 \(Int(model.elapsed)) 秒")
+                    }
                 } else if let timing = TimingPresentation(session: model) {
                     Text(timing.summary)
                         .font(.system(size: 11)).monospacedDigit()
                         .foregroundStyle(.white.opacity(0.7))
                         .lineLimit(1).minimumScaleFactor(0.85)
                         .accessibilityLabel("本轮耗时，\(timing.summary)")
+                } else if model.isBusy || insertion.isDelivering {
+                    ProgressView().controlSize(.mini).tint(OmniBrand.accent)
+                        .accessibilityLabel(title)
                 }
             }
             Spacer(minLength: 0)
             if model.phase == .recording {
                 Button { state.toggleRecording() } label: {
-                    Image(systemName: "stop.fill").frame(width: 30, height: 30)
+                    Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold))
+                        .frame(width: 30, height: 30)
+                        .background(OmniBrand.accent, in: Circle())
                 }
                 .accessibilityLabel("结束录音")
             } else if (model.phase == .ready && !insertion.isDelivering) || model.phase == .failed {
                 Button("查看结果") { state.openResults?() }.font(.system(size: 12))
             }
-            Button { state.closeFeedback() } label: { Image(systemName: "xmark").frame(width: 30, height: 30) }
+            Button { state.closeFeedback() } label: {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7)).frame(width: 24, height: 30)
+            }
                 .accessibilityLabel(model.isBusy || insertion.isDelivering ? "取消并清空本轮" : "收起提示")
                 .help(model.isBusy || insertion.isDelivering ? "取消并清空本轮" : "本轮结果仍可从菜单栏查看。")
         }
         .buttonStyle(.plain).foregroundStyle(.white)
-        .padding(.horizontal, 19).padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 14)
         .frame(width: Self.size.width, height: Self.size.height)
-        .background(Color(red: 0.10, green: 0.13, blue: 0.12), in: RoundedRectangle(cornerRadius: 20))
+        .background(LinearGradient(colors: [Color(red: 0.18, green: 0.16, blue: 0.15),
+                                             Color(red: 0.11, green: 0.10, blue: 0.09)],
+                                   startPoint: .top, endPoint: .bottom),
+                    in: RoundedRectangle(cornerRadius: 22))
+        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.white.opacity(0.12)).allowsHitTesting(false))
     }
 
     private var title: String {
