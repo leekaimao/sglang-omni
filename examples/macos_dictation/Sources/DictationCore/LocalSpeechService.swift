@@ -35,6 +35,10 @@ public final class LocalSpeechService: SpeechServing {
             .warmup(personalBackground: personalBackground)
     }
 
+    public func makeCorrector() -> TextCorrecting {
+        OllamaCorrector(configuration: configuration.polish, transport: transport)
+    }
+
     public func health() async -> (asr: String, ollama: String) {
         let config = configuration
         async let asr = OmniASRClient(configuration: config.asr, transport: transport).health()

@@ -14,6 +14,8 @@ final class ClientState: ObservableObject {
     let session: DictationSession
     let insertion = DictationInsertion()
     let feedback: DictationFeedback
+    let correction: CorrectionSession
+    let correctionFeedback: DictationFeedback
     @Published var asrStatus = "尚未检测"
     @Published var ollamaStatus = "尚未检测"
     @Published var checking = false
@@ -32,9 +34,12 @@ final class ClientState: ObservableObject {
     @Published var compatibilityPasteEnabled = false
     var openResults: (() -> Void)?
     var openAudio: (() -> Void)?
+    var captureRevisionTarget: ((String) throws -> TextRevisionTarget?)?
+    var isBusy: Bool { session.isBusy || insertion.isDelivering || correction.isBusy }
     private var observers: Set<AnyCancellable> = []
     private var healthTask: Task<Void, Never>?
     private var healthGeneration = UUID()
+    private var didHandleResult = false
     private let makeTextTarget: (Bool, Bool) throws -> DictationTextTarget
     var hotkeyNotice: String { shortcuts.notice }
     var shortcutLabel: String { shortcuts.shortcut.display }
@@ -64,10 +69,26 @@ final class ClientState: ObservableObject {
         warmup = PolishWarmup.configured {
             try await service.warmup(personalBackground: $0.personalBackground, model: $0.model)
         }
-        session = DictationSession(recorder: recorder ?? MicrophoneRecorder(), service: service)
+        let recorder = recorder ?? MicrophoneRecorder()
+        session = DictationSession(recorder: recorder, service: service)
+        correction = CorrectionSession(recorder: recorder, service: service, makeCorrector: { service.makeCorrector() })
         feedback = DictationFeedback(session: session, insertion: insertion,
                                      reduceMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion })
-        session.onResult = { [weak self] text in self?.insertion.complete(text) }
+        correctionFeedback = DictationFeedback(correction: correction,
+                                               reduceMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion })
+        session.onResult = { [weak self] text in
+            guard let self, !self.didHandleResult else { return }
+            self.didHandleResult = true
+            self.correction.remember(text)
+            var target: TextRevisionTarget?
+            if !text.isEmpty {
+                do { target = try self.captureRevisionTarget?(text) }
+                catch { self.correction.noteUnavailableTarget(error.localizedDescription) }
+            }
+            self.insertion.complete(text)
+            if self.insertion.didTriggerPaste { self.correction.trackInsertion(target) }
+            else { target?.cancel() }
+        }
         savedBackground = preferences.personalBackground
         personalBackgroundDraft = savedBackground
         personalBackgroundEnabled = preferences.personalBackgroundEnabled
@@ -75,24 +96,33 @@ final class ClientState: ObservableObject {
         session.polishEnabled = preferences.polishEnabled
         shortcuts.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observers)
         warmup.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observers)
+        correction.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observers)
+        session.$phase.removeDuplicates().sink { [weak self] phase in
+            if phase == .authorizing || phase == .recognizing {
+                self?.didHandleResult = false
+                self?.correction.clear()
+            }
+        }.store(in: &observers)
         session.$polishEnabled.dropFirst().sink { [weak self] enabled in
             guard let self else { return }
             self.preferences.polishEnabled = enabled
             self.updateWarmup(enabled: enabled)
         }.store(in: &observers)
-        session.$phase.combineLatest(insertion.$isDelivering).sink { [weak self] phase, delivering in
+        session.$phase.combineLatest(insertion.$isDelivering).combineLatest(correction.$phase).sink { [weak self] pair, correctionPhase in
+            let (phase, delivering) = pair
             if phase == .polishing { self?.warmup.foregroundWillPolish() }
-            self?.updateWarmup(busy: [.authorizing, .recording, .recognizing, .polishing].contains(phase) || delivering)
+            self?.updateWarmup(busy: [.authorizing, .recording, .recognizing, .polishing].contains(phase)
+                              || delivering || correctionPhase.isBusy)
         }.store(in: &observers)
     }
 
     func beginShortcutCapture() {
-        guard !session.isBusy, !insertion.isDelivering else { return }
+        guard !isBusy else { return }
         shortcuts.beginCapture()
     }
 
     func restoreShortcut() {
-        guard !session.isBusy, !insertion.isDelivering else { return }
+        guard !isBusy else { return }
         shortcuts.restoreDefault()
     }
 
@@ -127,7 +157,7 @@ final class ClientState: ObservableObject {
     private func updateWarmup(enabled: Bool? = nil, busy: Bool? = nil) {
         warmup.update(enabled: enabled ?? session.polishEnabled,
                       personalBackground: session.personalBackground,
-                      busy: busy ?? (session.isBusy || insertion.isDelivering), model: configuration.polish)
+                      busy: busy ?? isBusy, model: configuration.polish)
     }
 
     func saveServiceConfiguration() {
@@ -151,7 +181,7 @@ final class ClientState: ObservableObject {
     }
 
     func toggleRecording() {
-        guard !shortcuts.isCapturing else { return }
+        guard !shortcuts.isCapturing, !correction.isBusy else { return }
         if session.phase == .recording { session.toggleRecording(); return }
         guard !session.isBusy, !insertion.isDelivering else { return }
         insertion.cancel()
@@ -174,12 +204,23 @@ final class ClientState: ObservableObject {
     }
 
     func cancel() {
+        if correction.isBusy {
+            correction.cancel()
+            return
+        }
+        correction.clear()
         insertion.cancel()
         session.cancel()
     }
 
+    func toggleCorrection() {
+        guard !shortcuts.isCapturing, !session.isBusy, !insertion.isDelivering else { return }
+        correction.toggleRecording(personalBackground: personalBackgroundEnabled ? savedBackground : "")
+    }
+
     func closeFeedback() {
-        if session.isBusy || insertion.isDelivering { cancel() }
+        if isBusy { cancel() }
+        else if correction.phase != .idle { correctionFeedback.dismiss() }
         else { feedback.dismiss() }
     }
 

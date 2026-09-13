@@ -51,15 +51,29 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
     private var phaseObserver: AnyCancellable?
     private var feedbackObserver: AnyCancellable?
     private lazy var resultFeedback = ResultWindowFeedback(
-        session: state.session, insertion: state.insertion,
+        session: state.session, insertion: state.insertion, correction: state.correction,
         reduceMotion: { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion })
     private var resultFeedbackObserver: AnyCancellable?
     private var escapeMonitor: Any?
+    private let correctionShortcut = DoubleOptionShortcut()
+    private var correctionObserver: AnyCancellable?
+    private var accessibilityObserver: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         state.openResults = { [weak self] in self?.showResults() }
         state.openAudio = { [weak self] in self?.importAudio() }
+        state.captureRevisionTarget = { try EditableTextAnchor.capture(text: $0) }
         makeMenus()
+        correctionShortcut.action = { [weak self] in self?.state.toggleCorrection() }
+        correctionShortcut.isEnabled = { [weak self] in
+            guard let self else { return false }
+            return NSApp.modalWindow == nil && !self.state.shortcuts.isCapturing
+                && !self.state.session.isBusy && !self.state.insertion.isDelivering
+                && (!self.state.correction.isBusy || self.state.correction.phase == .recording)
+        }
+        accessibilityObserver = state.$accessibilityGranted.removeDuplicates().sink { [weak self] _ in
+            self?.correctionShortcut.start()
+        }
         state.registrar.action = { [weak self] id in
             guard let self, NSApp.modalWindow == nil, self.state.shortcuts.isAvailable,
                   !self.state.shortcuts.isCapturing else { return }
@@ -73,11 +87,15 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
         phaseObserver = state.session.$phase.removeDuplicates().sink { [weak self] phase in
             guard let self else { return }
             if phase == .failed { self.state.insertion.abandon("本轮未完成，没有自动回填。") }
-            self.item?.button?.image = OmniBrand.menuImage(recording: phase == .recording)
-            self.item?.button?.setAccessibilityLabel("Omni 听写：\(phase.rawValue)")
-            self.item?.button?.toolTip = "Omni 听写 · \(phase.rawValue)"
+            self.updateStatus(phase: phase, correction: self.state.correction.phase)
         }
-        feedbackObserver = state.feedback.$opacity.removeDuplicates().sink { [weak self] opacity in
+        correctionObserver = state.correction.$phase.removeDuplicates().sink { [weak self] phase in
+            guard let self else { return }
+            self.updateStatus(phase: self.state.session.phase, correction: phase)
+        }
+        feedbackObserver = state.feedback.$opacity.combineLatest(state.correctionFeedback.$opacity, state.correction.$phase)
+            .map { ordinary, correction, phase in phase == .idle ? ordinary : correction }
+            .removeDuplicates().sink { [weak self] opacity in
             guard let self else { return }
             if opacity <= 0 { self.panel?.orderOut(nil) }
             else { self.showPanel(opacity: opacity) }
@@ -101,7 +119,7 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
                 }
                 return nil
             }
-            if event.type == .keyDown, event.keyCode == 53, NSApp.modalWindow == nil, self.state.session.isBusy {
+            if event.type == .keyDown, event.keyCode == 53, NSApp.modalWindow == nil, self.state.isBusy {
                 self.state.cancel()
                 return nil
             }
@@ -128,6 +146,8 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         state.cancel()
+        state.correction.clear()
+        correctionShortcut.stop()
         state.warmup.stop()
         state.registrar.stop()
         focusObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -138,6 +158,13 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         return item
+    }
+
+    private func updateStatus(phase: DictationPhase, correction: CorrectionPhase) {
+        let label = correction == .idle ? phase.rawValue : correction.rawValue
+        item?.button?.image = OmniBrand.menuImage(recording: phase == .recording || correction == .recording)
+        item?.button?.setAccessibilityLabel("Omni 听写：\(label)")
+        item?.button?.toolTip = "Omni 听写 · \(label)"
     }
 
     private func makeMenus() {
@@ -153,6 +180,7 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
         let recording = entry("开始 / 结束录音", #selector(toggleRecording))
         recordingMenuItems.append(recording)
         file.addItem(recording)
+        file.addItem(entry("更正上一段    双击 Option", #selector(toggleCorrection)))
         file.addItem(entry("取消本轮", #selector(cancel)))
         file.addItem(entry("打开录音文件…", #selector(importAudio), key: "o"))
         let edit = NSMenu(title: "编辑")
@@ -176,6 +204,7 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
         let statusRecording = entry("开始 / 结束录音", #selector(toggleRecording))
         recordingMenuItems.append(statusRecording)
         menu.addItem(statusRecording)
+        menu.addItem(entry("更正上一段    双击 Option", #selector(toggleCorrection)))
         menu.addItem(entry("取消本轮    ⌃⇧Esc", #selector(cancel)))
         menu.addItem(entry("本轮结果", #selector(showResults)))
         menu.addItem(entry("打开录音文件…", #selector(importAudio)))
@@ -189,6 +218,7 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleRecording() { state.toggleRecording() }
+    @objc private func toggleCorrection() { state.toggleCorrection() }
     @objc private func cancel() { state.cancel() }
     @objc private func quit() { NSApp.terminate(nil) }
 
@@ -226,14 +256,15 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func importAudio() {
-        guard !state.session.isBusy, !state.insertion.isDelivering else { return }
+        guard !state.isBusy else { return }
         let dialog = NSOpenPanel()
         dialog.allowedContentTypes = [.audio]
         dialog.allowsMultipleSelection = false
         dialog.canChooseDirectories = false
         dialog.message = "选择 \(Int(DictationSession.maximumAudioSeconds)) 秒以内的录音，仅发送给本机 Omni ASR。"
         NSApp.activate(ignoringOtherApps: true)
-        guard dialog.runModal() == .OK, let url = dialog.url, !state.session.isBusy else { return }
+        guard dialog.runModal() == .OK, let url = dialog.url, !state.isBusy else { return }
+        state.correction.clear()
         state.insertion.abandon("文件转写仅供查看和复制，不自动填入其他应用。")
         do { state.session.submitAudio(try AudioEncoder.load(url)) }
         catch { state.session.reportInputFailure("无法读取录音：\(error.localizedDescription)") }
@@ -253,7 +284,11 @@ final class ClientDelegate: NSObject, NSApplicationDelegate {
             panel.isMovableByWindowBackground = true
             let content = DictationPanelContent(rootView: ClientFloatingView(model: state.session, state: state,
                                                                              insertion: state.insertion))
-            content.onHover = { [weak self] in self?.state.feedback.setHovered($0) }
+            content.onHover = { [weak self] in
+                guard let self else { return }
+                if self.state.correction.phase == .idle { self.state.feedback.setHovered($0) }
+                else { self.state.correctionFeedback.setHovered($0) }
+            }
             panel.contentView = content
             self.panel = panel
         }

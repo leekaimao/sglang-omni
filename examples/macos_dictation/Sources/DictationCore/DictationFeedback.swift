@@ -8,6 +8,7 @@ public final class DictationFeedback: ObservableObject {
     private enum Mode: Equatable {
         case hidden
         case active(DictationPhase)
+        case correction(CorrectionPhase)
         case completed
         case attention
     }
@@ -54,6 +55,20 @@ public final class DictationFeedback: ObservableObject {
         isHovered = false
         cancelFade()
         opacity = 0
+    }
+
+    public init(correction: CorrectionSession, holdDuration: Double = 1, fadeDuration: Double = 0.3,
+                attentionHoldDuration: Double = 3, reduceMotion: @escaping () -> Bool = { false }) {
+        self.holdDuration = holdDuration
+        self.fadeDuration = fadeDuration
+        self.attentionHoldDuration = attentionHoldDuration
+        self.reduceMotion = reduceMotion
+        observer = correction.$phase.removeDuplicates().sink { [weak self, weak correction] phase in
+            if phase == .idle { self?.update(.hidden) }
+            else if phase == .failed { self?.update(.attention) }
+            else if phase == .ready { self?.update(correction?.didReplace == true ? .completed : .attention) }
+            else { self?.update(.correction(phase)) }
+        }
     }
 
     public func setHovered(_ hovered: Bool) {

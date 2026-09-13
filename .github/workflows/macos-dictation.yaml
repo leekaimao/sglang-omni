@@ -30,6 +30,19 @@ jobs:
         run: bash examples/macos_dictation/result_window_feedback_test.sh
       - name: Check capture failure at stop without microphone access
         run: bash examples/macos_dictation/capture_stop_test.sh
+      - name: Check voice correction without models or input events
+        run: |
+          bash examples/macos_dictation/correction_test.sh
+          bash examples/macos_dictation/revision_target_test.sh
+          bash examples/macos_dictation/correction_integration_test.sh
+          bash examples/macos_dictation/correction_feedback_test.sh
+          bash examples/macos_dictation/ollama_correction_test.sh
+          bash examples/macos_dictation/correction_instruction_echo_test.sh
+          bash examples/macos_dictation/spelling_correction_test.sh
+          bash examples/macos_dictation/background_correction_test.sh
+          bash examples/macos_dictation/revision_confirmation_test.sh
+          bash examples/macos_dictation/revision_anchor_compatibility_test.sh
+          bash examples/macos_dictation/revision_selection_delay_test.sh
       - name: Check installation and startup helpers without downloads
         run: bash examples/macos_dictation/local_setup_test.sh
       - name: Check warmup and backend lifecycles without models

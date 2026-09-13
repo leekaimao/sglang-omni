@@ -95,7 +95,74 @@ The GitHub workflow runs both on the documented arm64 `macos-15` runner; see
 [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 It does not exercise microphone permission dialogs or real editor insertion.
 
-## Opt-in live backend checks
+## Voice correction checks
+
+Voice-correction regressions run separately from the original suite:
+
+```bash
+bash examples/macos_dictation/correction_test.sh
+bash examples/macos_dictation/revision_target_test.sh
+bash examples/macos_dictation/correction_integration_test.sh
+bash examples/macos_dictation/correction_feedback_test.sh
+bash examples/macos_dictation/ollama_correction_test.sh
+bash examples/macos_dictation/spelling_correction_test.sh
+bash examples/macos_dictation/correction_instruction_echo_test.sh
+bash examples/macos_dictation/background_correction_test.sh
+bash examples/macos_dictation/revision_confirmation_test.sh
+bash examples/macos_dictation/revision_anchor_compatibility_test.sh
+bash examples/macos_dictation/revision_selection_delay_test.sh
+```
+
+These use fake recording, intercepted HTTP and isolated pasteboards. They cover
+UTF-16 edit spans, double-Option recognition, cancellation, changed targets,
+clipboard ownership, shared-microphone exclusion, result-window transitions,
+structured responses and the explicit whole-paragraph deletion guard.
+The additional checks cover explicit spelling versus background suffixes and delayed
+caret updates after the expected pasted text appears. A different draft still prevents
+confirming an insertion.
+The anchor compatibility regression also keeps a stale caret throughout confirmation,
+checks an added final LF and a removed empty-editor LF placeholder, and verifies the
+actual revision preserves the editor's suffix. It rejects a missing LF inside the
+dictated span, a shifted span, unrelated edits and changed focus. These are simulated
+editor checks, not evidence of compatibility with a particular external application.
+It also covers a stale pre-paste snapshot predicting 20 UTF-16 units when the
+changed field contains exactly the 15-unit dictated paragraph. Whole-field
+confirmation resets the retained offset to zero and applies only the changed
+fragment. Unchanged pre-existing text, duplicate paragraphs and unrelated text
+do not qualify for this fallback.
+
+The selection-delay regression models an AX setter returning before its selected
+range is readable. It verifies one paste after acknowledgement and no paste when
+the range never updates, the text/focus changes, or correction is cancelled.
+
+The instruction-echo regression sends a contaminated model response through the
+real correction session and checks that no draft write occurs. It also covers
+punctuation/spacing changes, legitimate quoted replacement text, and the scoped
+`S.G. Lang` / `L.A.N.G.` spelling case. With `OMNI_CORRECTION_LIVE_TEST=1`, its
+runner additionally checks that case against the default local model plus client
+spelling handling. That is a functional check, not model-only accuracy evidence.
+
+The optional local-model check uses synthetic text only:
+
+```bash
+OMNI_CORRECTION_LIVE_TEST=1 bash examples/macos_dictation/correction_live_test.sh
+OMNI_CORRECTION_LIVE_TEST=1 bash examples/macos_dictation/background_correction_test.sh
+```
+
+It checks name, number and negation edits against exact expected strings. It does
+not establish broad model accuracy or test microphone, keyboard or editor delivery.
+`OMNI_CORRECTION_URL` and `OMNI_CORRECTION_MODEL` override the documented defaults;
+the URL must still pass the client's loopback-only validation.
+
+For two user-supplied audio files, run `audio_correction_test.sh` with
+`OMNI_CORRECTION_AUDIO_TEST=1`, the original recording path, the correction recording
+path and an optional expected full result. `--saved-settings` opts into reading the
+installed app's saved configuration and enabled personal background. This test prints
+transcripts, contacts local models, and applies the real revision to an in-memory draft;
+it never sends input events or changes the user's editor, clipboard or preferences.
+See [VOICE_CORRECTION.zh-CN.md](VOICE_CORRECTION.zh-CN.md) for an invocation example.
+
+## Other opt-in live backend checks
 
 Start the default local servers described in [README.md](README.md), then run:
 
@@ -119,6 +186,12 @@ explicitly; prefill/cache measurements are not end-to-end dictation latency.
 
 ## Manual acceptance before requesting merge
 
+Voice correction has not yet passed end-to-end acceptance in Codex. A recent manual
+run selected the intended word but stopped before paste because the selected range
+was not confirmed. The bounded selection-acknowledgement fix passes simulated-editor
+regressions; a fresh microphone-to-Codex replacement run remains pending. Do not treat
+model output checks or in-memory draft tests as confirmation of external-editor delivery.
+
 Use a non-sensitive scratch draft in each target application. Record which
 application and version were tested, input mode, expected result and actual result.
 
@@ -136,6 +209,12 @@ application and version were tested, input mode, expected result and actual resu
 | Save model/background changes during a round | Current round unchanged, next round uses new configuration |
 | Restart after changing settings | Shortcut, model configuration and explicit preferences restored |
 | Backend unavailable or accessibility denied | Actionable status; no false claim of confirmed insertion |
+| Double-tap the same Option key after dictation, speak an edit, then double-tap again | One correction recording and one update of the verified previous span; no automatic send |
+| Use Option+Space, hold Option, or alternate left/right Option | Does not accidentally start correction |
+| Edit the original paragraph or switch away during correction | Automatic replacement stops; corrected text remains available to copy |
+| Edit a name, a number, or a negation with polishing disabled | Explicit correction still uses Ollama and may make the requested semantic change |
+| Correct twice, including Unicode text and a deletion | Each edit uses the latest confirmed span and preserves surrounding text |
+| Copy something else while correction is being delivered | The user's newer clipboard content is retained |
 
 The original client has been exercised locally in Codex with user-confirmed
 insertion and no automatic send. That evidence is not a guarantee of compatibility

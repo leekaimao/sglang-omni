@@ -18,6 +18,12 @@ struct ClientResultView: View {
     }
 
     var body: some View {
+        if state.correction.phase != .idle {
+            ClientCorrectionView(model: state.correction, recording: state.correction.recording, state: state)
+        } else { dictationBody }
+    }
+
+    private var dictationBody: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Label("本轮结果", systemImage: "waveform").font(.system(size: 17, weight: .semibold))
@@ -159,6 +165,8 @@ struct ClientSettingsView: View {
                     }
                     Text("首次授权后回到要输入文字的位置，重新开始录音。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text("更正上一段：在原输入框双击 Option，说出修改意见，再双击结束。独立于轻度整理开关，使用本地 Ollama。")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
@@ -176,7 +184,7 @@ struct ClientSettingsView: View {
                             Button("恢复默认") { state.restoreShortcut() }
                         }
                     }
-                    .disabled(model.isBusy || state.insertion.isDelivering)
+                    .disabled(state.isBusy)
                     if !state.hotkeyNotice.isEmpty {
                         Text(state.hotkeyNotice).foregroundStyle(state.shortcuts.isCapturing ? Color.secondary : Color.orange)
                     }
@@ -191,7 +199,7 @@ struct ClientSettingsView: View {
                     }
                     .pickerStyle(.segmented).disabled(model.isBusy || state.shortcuts.isCapturing)
                     Text(state.pasteToCurrentCursor
-                         ? "默认模式。向识别完成时的当前光标粘贴，可切换输入位置。无需读取输入框；显示“已触发粘贴”后请检查文字。"
+                         ? "默认模式。向识别完成时的当前光标粘贴，可切换输入位置。会尝试在本机记录该段位置供语音更正；无法读取时仍可普通粘贴。"
                          : "保持录音开始时的输入框和光标不变。检测到草稿或焦点变化时，本轮只提供复制。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
@@ -222,7 +230,7 @@ struct ClientSettingsView: View {
                     Toggle("使用个人润色背景", isOn: Binding(get: { state.personalBackgroundEnabled },
                                                       set: { state.setPersonalBackgroundEnabled($0) }))
                         .toggleStyle(.switch).accessibilityLabel("使用个人润色背景")
-                    Text("填写常用术语、人名拼写或排版偏好。纠错对照可写为：em el ex → MLX。只辅助忠实校对，不回答或补入个人事实。")
+                    Text("填写常用术语、人名拼写或排版偏好。自动整理的纠错对照可写为：em el ex → MLX。语音更正可说“按背景里的项目名改”；本次明确拼出的名称优先。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                     TextEditor(text: $state.personalBackgroundDraft)
                         .font(.system(size: 13)).frame(height: 120)
@@ -246,7 +254,7 @@ struct ClientSettingsView: View {
                     if !state.backgroundNotice.isEmpty {
                         Text(state.backgroundNotice).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
-                    Text("保存到本机应用设置（非加密存储）。仅在两个开关均开启时发送给本机 Ollama；不发送给 ASR，不保存听写历史。修改从下一轮生效。")
+                    Text("保存到本机应用设置（非加密存储）。自动整理需两个开关都开启；主动更正会使用已启用的背景。不发送给 ASR，不保存听写历史。修改从下一轮生效。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                     Text(state.warmup.status).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
@@ -302,6 +310,12 @@ struct ClientFloatingView: View {
     @ObservedObject var insertion: DictationInsertion
 
     var body: some View {
+        if state.correction.phase != .idle {
+            CorrectionFloatingView(model: state.correction, recording: state.correction.recording, state: state)
+        } else { dictationBody }
+    }
+
+    private var dictationBody: some View {
         HStack(spacing: 12) {
             OmniLogoView().frame(width: 30, height: 40)
             VStack(alignment: .leading, spacing: 5) {

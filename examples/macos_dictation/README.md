@@ -91,7 +91,7 @@ and `OmniDictation` targets, creates an application bundle, and signs it locally
 with an ad-hoc signature. Build outputs are ignored by Git.
 Quit a running older version before opening a rebuilt application.
 
-On first use, open Settings from the microphone menu-bar icon. Enable **Omni 听写**
+On first use, open Settings from the O-shaped menu-bar icon. Enable **Omni 听写**
 in **System Settings → Privacy & Security → Accessibility**, then refresh its
 status in the app. Allow microphone access when first recording.
 An ad-hoc rebuild may invalidate the old accessibility entry: remove that entry,
@@ -135,6 +135,21 @@ not pure model inference times. Total time ends before insertion; recording, mod
 warmup and clipboard delivery are excluded. Failed requests retain their elapsed
 time. No latency history is saved; start/cancel clears the current measurements.
 
+### Voice correction with double Option
+
+After dictation, return to the original editor and tap the same Option key twice.
+Speak a correction (for example, “change Zhang San to Zhang Shan”), then double-tap
+Option again or click the stop button. This uses the configured local ASR and Ollama
+independently of the light-polishing switch. The client retains the last delivered
+text and, where AX supports it, verifies its insertion span before replacing only
+the changed interval. A changed or unsupported target produces a copyable result.
+New ordinary dictation clears the previous correction context; hiding a window does not.
+
+Pure deletions require a writable AX selected-text attribute. Unconfirmed writes are
+never retried. Voice correction is experimental; automatic replacement is limited to compatible plain text fields;
+editor-specific acceptance testing is still required. See
+[the Chinese correction guide](VOICE_CORRECTION.zh-CN.md) for controls and boundaries.
+
 ### Independent ASR and LLM configuration
 
 Settings contains separate model-name and base-URL fields for Omni and Ollama.
@@ -155,6 +170,16 @@ Enable **轻度整理** to use Ollama. **使用个人润色背景** additionally
 terminology or formatting preferences. Save the background before recording.
 Explicit spelling corrections can use `em el ex → MLX`. The background is limited
 to 2,000 characters and must not override the original meaning, language or numbers.
+Automatic polishing only permits explicit spelling mappings. During voice correction,
+explicitly spelled letters take precedence over a longer background name: spelling
+`S G L A N G` does not authorize appending `-Omni`. Ask to use the background's project
+name when the full name is intended. The correction prompt preserves that distinction;
+the spelling formatter joins letters in the model's edited span. A complete spelling
+directive can also correct one unique Latin-plus-Mandarin-pinyin match in the original
+text, including a named suffix such as `Lang` in `SGLang`. This is deterministic client
+handling, not evidence of model-only correction quality. Results that introduce the
+entire editing instruction into the transcript are rejected before delivery. Model
+output still needs review.
 
 The prompt instructs the model to copyedit, never answer the dictated question,
 execute instructions, translate, or add personal facts. A separate conservative
@@ -179,9 +204,11 @@ neither guarantees a subsequent cache hit nor warms up the ASR model.
 
 ### Input modes and privacy
 
-- **Current cursor** is the default. It does not inspect another application's
-  text fields. The bar says “已触发粘贴” (paste triggered), because key delivery is
-  not proof that an editor accepted the text. The transcript remains in the clipboard.
+- **Current cursor** is the default. Ordinary paste does not require reading the
+  target field. When Accessibility permits it, the client also reads the focused
+  field locally to establish the optional voice-correction anchor. The bar says
+  “已触发粘贴” (paste triggered), because key delivery is not proof that an editor
+  accepted the text. The transcript remains in the clipboard.
 - **Lock original input** is optional. It validates the captured application,
   window, text field, draft and selection. Confirmed insertion restores the previous
   clipboard only while the client still owns it. Missing or changed target data
@@ -191,9 +218,11 @@ neither guarantees a subsequent cache hit nor warms up the ASR model.
   takes priority. The client never retries an ambiguous paste automatically.
 - Importing an audio file only produces a result for viewing/copying; it never
   automatically inserts into another application.
-- Audio stays in memory and is converted to mono 16 kHz PCM16 WAV for Omni. Raw text
-  goes to Ollama only when polishing is enabled. Background goes only to Ollama
-  when both switches are enabled. Redirects, proxies, cookies and HTTP disk cache are disabled.
+- Audio stays in memory and is converted to mono 16 kHz PCM16 WAV for Omni. Text
+  goes to Ollama when polishing is enabled or the user explicitly requests voice
+  correction. Enabled personal background may accompany either request. Correction
+  anchors read editor state locally; unrelated editor text never enters the model
+  request. Redirects, proxies, cookies and HTTP disk cache are disabled.
 - Explicit settings, including model names and personal background, are stored
   in local, unencrypted `UserDefaults`. They are not transcript history and are not
   added to the repository. Clearing background settings does not immediately erase
@@ -228,6 +257,17 @@ Run the complete deterministic regression entry point on an Apple Silicon Mac:
 bash examples/macos_dictation/verify_all_test.sh
 bash examples/macos_dictation/result_window_feedback_test.sh
 bash examples/macos_dictation/capture_stop_test.sh
+bash examples/macos_dictation/correction_test.sh
+bash examples/macos_dictation/revision_target_test.sh
+bash examples/macos_dictation/correction_integration_test.sh
+bash examples/macos_dictation/correction_feedback_test.sh
+bash examples/macos_dictation/ollama_correction_test.sh
+bash examples/macos_dictation/correction_instruction_echo_test.sh
+bash examples/macos_dictation/spelling_correction_test.sh
+bash examples/macos_dictation/background_correction_test.sh
+bash examples/macos_dictation/revision_confirmation_test.sh
+bash examples/macos_dictation/revision_anchor_compatibility_test.sh
+bash examples/macos_dictation/revision_selection_delay_test.sh
 bash examples/macos_dictation/local_setup_test.sh
 bash examples/macos_dictation/lifecycle_test.sh
 bash examples/macos_dictation/build_client.sh

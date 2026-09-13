@@ -180,7 +180,7 @@ final class AccessibilityTextTarget: DictationTextTarget {
         }
     }
 
-    private static func readInput(_ element: AXUIElement) throws -> TextInputSnapshot {
+    static func readInput(_ element: AXUIElement) throws -> TextInputSnapshot {
         // Reject marked terminal/search/password contexts, including embedded terminal panels.
         var ancestor: AXUIElement? = element
         for _ in 0..<24 {
@@ -196,13 +196,13 @@ final class AccessibilityTextTarget: DictationTextTarget {
         return try TextInputSnapshot(read: { attribute(element, $0) })
     }
 
-    private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+    static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value
     }
 
-    private static func axElement(_ element: AXUIElement, _ name: String) -> AXUIElement? {
+    static func axElement(_ element: AXUIElement, _ name: String) -> AXUIElement? {
         guard let value = attribute(element, name), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }

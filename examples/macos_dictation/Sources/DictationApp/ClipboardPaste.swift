@@ -80,6 +80,16 @@ final class ClipboardPaste {
         return pasteboard.pasteboardItems?.count == 1 && pasteboard.string(forType: Self.ownerType) == owner
     }
 
+    /// Revision paste owns only its temporary fragment. On confirmed delivery, keep
+    /// the full revised transcript if the user has not copied something else.
+    func finishRevision(confirmed: Bool, text: String) {
+        guard !finished else { return }
+        finished = true
+        defer { original = []; ownedRevision = nil }
+        guard confirmed, stillOwnsClipboard else { return }
+        _ = pasteboard.setString(text, forType: .string)
+    }
+
     private func snapshot() throws -> [NSPasteboardItem] {
         guard let items = pasteboard.pasteboardItems else {
             guard pasteboard.types?.isEmpty != false else { throw DictationError("无法保存现有剪贴板，本轮只提供手动复制。") }
