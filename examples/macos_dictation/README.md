@@ -138,12 +138,55 @@ time. No latency history is saved; start/cancel clears the current measurements.
 ### Voice correction with double Option
 
 After dictation, return to the original editor and tap the same Option key twice.
-Speak a correction (for example, “change Zhang San to Zhang Shan”), then double-tap
-Option again or click the stop button. This uses the configured local ASR and Ollama
-independently of the light-polishing switch. The client retains the last delivered
-text and, where AX supports it, verifies its insertion span before replacing only
-the changed interval. A changed or unsupported target produces a copyable result.
-New ordinary dictation clears the previous correction context; hiding a window does not.
+Speak an edit, then double-tap Option again or click the stop button. This uses the
+configured local ASR independently of the light-polishing switch. For example:
+
+- “把张三改成李四吧” changes a name while retaining its surrounding text.
+- “整段合成一句话” asks for a rewrite of the last dictation only.
+- An unclear instruction can produce a clarification question; that question is
+  displayed in Omni and is never pasted into the editor.
+
+The model returns `scope` (`local`, `rewrite`, or `clarify`) and `text`. For local
+edits and rewrites, `text` contains the complete edited dictation. Four fixed
+user/assistant examples teach missing-target clarification, vague instructions,
+single-character correction and spelling precedence over background names.
+
+`CorrectionPlan` bypasses Ollama only for narrow rules: cancellation, explicit
+whole-text deletion, uniquely grounded spelling/background mappings, and an exact
+replacement with both source and replacement quoted. Other instructions, including
+ordinary unquoted replacements and partial deletions, use the model. Recognized
+literal/ordinal targets constrain the unchanged prefix/suffix; quoted replacement
+text must be used exactly. Colon-delimited field edits preserve labels such as
+`负责人` and `备注`. Missing quoted/short literal targets and unqualified duplicate
+literal targets are rejected before a model request. A unique exact homophone can
+bound a model edit, but is never applied automatically. A phone/email replacement
+with no recognizable contact evidence is rejected instead of inventing a field. A recognized single-character instruction
+also constrains the size and replacement character of the edit.
+
+A content-validation failure may trigger one regeneration with concrete feedback,
+using the same original and instruction. Malformed responses, service errors and
+clarifications are not retried. Neither attempt writes to the editor. Unrecognized
+natural-language targets and rewrite intent still depend on model interpretation;
+the guards do not guarantee semantic correctness or prevent every unrelated edit.
+
+The client retains one previous dictation and, where Accessibility supports it,
+verifies its editor/span before replacing the changed interval. A rewrite can
+replace that entire dictation, never the editor's surrounding paragraphs. A changed
+or unsupported target produces a copyable result. Unconfirmed writes are not
+retried. New ordinary dictation clears the correction context; hiding results does not.
+
+Select an installed Ollama model in Settings. The public setup default remains
+`openbmb/minicpm5-2b:q4_K_M`. The official final-model Q8 tag is
+`openbmb/minicpm5-2b:q8_0`, not `:q8`; it is distinct from the SFT checkpoint.
+A locally imported SFT model must be selected by its actual name from `ollama list`.
+Local aliases and model weights are not included in this example.
+
+Run `bash examples/macos_dictation/correction_plan_test.sh` for offline planner
+checks. The opt-in `correction_accuracy_test.sh` compares fixed synthetic cases
+using the local model and reports repeated exact-output checks and timing; set
+`OMNI_CORRECTION_LIVE_TEST=1`, optionally `OMNI_CORRECTION_EXTRA_CASES=1` for a second
+case group. `OMNI_CORRECTION_SOURCE_DIR` can point to a baseline `DictationCore`
+source snapshot. This tests correction text, not real-editor delivery.
 
 Pure deletions require a writable AX selected-text attribute. Unconfirmed writes are
 never retried. Voice correction is experimental; automatic replacement is limited to compatible plain text fields;

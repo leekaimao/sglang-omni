@@ -191,9 +191,9 @@ public final class CorrectionSession: ObservableObject {
                 guard id == self.generation, !Task.isCancelled else { return }
                 self.correctedText = result.correctedText
                 if result.status == .noChange {
-                    self.notice = "模型返回原文，未修改输入框。如需更正，请明确要改的词和正确写法。"
+                    self.notice = "原文保持不变，未修改输入框。如需更正，请明确要改的词和正确写法。"
                 } else if TextRevision(original: original, corrected: result.correctedText).isEmpty {
-                    self.notice = "模型返回的文字与原文相同，未修改输入框；请更明确地说明要改哪个词。"
+                    self.notice = "更正结果与原文相同，未修改输入框；请更明确地说明要改哪个词。"
                 } else if let target {
                     self.phase = .applying
                     do {

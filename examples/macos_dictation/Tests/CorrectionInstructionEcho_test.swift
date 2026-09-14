@@ -43,7 +43,7 @@ private enum CorrectionInstructionEchoTests {
 
     @MainActor
     static func check(original: String, instruction: String, response: String, expected: String?) async throws {
-        let content = try JSONSerialization.data(withJSONObject: ["text": response])
+        let content = try JSONSerialization.data(withJSONObject: ["scope": "local", "text": response])
         let bytes = try JSONSerialization.data(withJSONObject: ["done": true, "done_reason": "stop",
             "message": ["content": String(decoding: content, as: UTF8.self)]])
         HTTPStub.reset(["/api/chat": .http(200, String(decoding: bytes, as: UTF8.self))])
@@ -76,13 +76,15 @@ private enum CorrectionInstructionEchoTests {
         let instruction = "S.G. Lang的Lang是L.A.N.G."
         let expected = "大家好，我们是SGLang组合。"
         // An ordinary edit must reject both a verbatim and a reformatted instruction echo.
-        for response in ["明天下午两点见。\n\n把两点改成三点。", "明天下午三点见。修改意见：把 两点 改成 三点"] {
-            try await check(original: "明天下午两点见。", instruction: "把两点改成三点。", response: response, expected: nil)
+        for response in ["明天下午两点见。\n\n时间往后推一个小时。", "明天下午三点见。修改意见：时间 往后 推一个小时"] {
+            try await check(original: "明天下午两点见。", instruction: "时间往后推一个小时。", response: response, expected: nil)
         }
         // The exact spelling directive independently identifies a unique original span.
         try await check(original: original, instruction: instruction,
                         response: original + "\n\nS.G.Lang的Lang是L.A.N.G.", expected: expected)
         try await check(original: "明天下午两点见。", instruction: "把两点改成三点。",
+                        response: "明天下午三点见。", expected: "明天下午三点见。")
+        try await check(original: "明天下午两点见。", instruction: "时间往后推一个小时。",
                         response: "明天下午三点见。", expected: "明天下午三点见。")
         try await check(original: "备注：待定。", instruction: "把备注改成“把两点改成三点”。",
                         response: "备注：把两点改成三点。", expected: "备注：把两点改成三点。")
@@ -91,7 +93,7 @@ private enum CorrectionInstructionEchoTests {
             let corrector = OllamaCorrector(transport: LocalHTTPTransport())
             let result = try await corrector.correct(original: original, instruction: instruction, personalBackground: "项目 SGLang-Omni")
             guard result.correctedText == expected else { throw DictationError("Live correction mismatch: \(result.correctedText)") }
-            print("PASS: local \(LocalModelConfiguration.ollama.model) request plus spelling handling: \(result.correctedText)")
+            print("PASS: explicit spelling through the correction pipeline: \(result.correctedText)")
             print("Single functional case; no microphone or external editor access, model-only accuracy or latency claim.")
         }
     }

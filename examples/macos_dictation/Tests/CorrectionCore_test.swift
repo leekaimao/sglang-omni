@@ -189,11 +189,12 @@ private enum CorrectionCoreTests {
         let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
         precondition(body["format"] is [String: Any] && body["stream"] as? Bool == false)
         func response(_ text: String, reason: String = "stop") throws -> Data {
-            let content = try JSONSerialization.data(withJSONObject: ["text": text])
+            let content = try JSONSerialization.data(withJSONObject: ["scope": "local", "text": text])
             return try JSONSerialization.data(withJSONObject: ["done": true, "done_reason": reason,
                 "message": ["content": String(decoding: content, as: UTF8.self)]])
         }
-        let deletion = try OllamaCorrector.decode(response(""), original: "删掉", instruction: "删除全部")
+        let deletion = try await OllamaCorrector(transport: LocalHTTPTransport())
+            .correct(original: "删掉", instruction: "删除全部", personalBackground: "")
         precondition(deletion.correctedText == "")
         do {
             _ = try OllamaCorrector.decode(response("partial", reason: "length"), original: "原文", instruction: "修改")

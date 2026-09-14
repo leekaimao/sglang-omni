@@ -53,8 +53,9 @@ private enum CorrectionIntegrationTests {
         state.toggleRecording()
         try await wait { state.correction.canReplace }
         precondition(state.correction.lastText == "明天和张三开会。" && target.writes == 1)
-        HTTPStub.set(.http(200, #"{"text":"把张三改成张珊"}"#), for: "/v1/audio/transcriptions")
-        let reply = #"{"text":"明天和张珊开会。"}"#
+        HTTPStub.set(.http(200, #"{"text":"人名最后一个字是珊瑚的珊。"}"#), for: "/v1/audio/transcriptions")
+        let payload = try JSONSerialization.data(withJSONObject: ["scope": "local", "text": "明天和张珊开会。"])
+        let reply = String(decoding: payload, as: UTF8.self)
         let bytes = try JSONSerialization.data(withJSONObject: ["done": true, "done_reason": "stop", "message": ["content": reply]])
         HTTPStub.set(.http(200, String(decoding: bytes, as: UTF8.self)), for: "/api/chat")
         state.toggleCorrection()

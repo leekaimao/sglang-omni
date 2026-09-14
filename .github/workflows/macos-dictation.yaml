@@ -37,6 +37,7 @@ jobs:
           bash examples/macos_dictation/correction_integration_test.sh
           bash examples/macos_dictation/correction_feedback_test.sh
           bash examples/macos_dictation/ollama_correction_test.sh
+          bash examples/macos_dictation/correction_plan_test.sh
           bash examples/macos_dictation/correction_instruction_echo_test.sh
           bash examples/macos_dictation/spelling_correction_test.sh
           bash examples/macos_dictation/background_correction_test.sh

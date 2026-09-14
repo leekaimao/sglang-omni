@@ -105,6 +105,7 @@ bash examples/macos_dictation/revision_target_test.sh
 bash examples/macos_dictation/correction_integration_test.sh
 bash examples/macos_dictation/correction_feedback_test.sh
 bash examples/macos_dictation/ollama_correction_test.sh
+bash examples/macos_dictation/correction_plan_test.sh
 bash examples/macos_dictation/spelling_correction_test.sh
 bash examples/macos_dictation/correction_instruction_echo_test.sh
 bash examples/macos_dictation/background_correction_test.sh
@@ -117,6 +118,11 @@ These use fake recording, intercepted HTTP and isolated pasteboards. They cover
 UTF-16 edit spans, double-Option recognition, cancellation, changed targets,
 clipboard ownership, shared-microphone exclusion, result-window transitions,
 structured responses and the explicit whole-paragraph deletion guard.
+The planner and Ollama fixtures cover the `scope`/`text` contract, static teaching
+examples, exact quoted edits, literal/ordinal bounds, field-value preservation,
+single-character checks, missing literal/contact evidence, exact homophone bounds,
+local-versus-rewrite boundaries, one feedback retry,
+clarification without delivery, and cancellation during either generation attempt.
 The additional checks cover explicit spelling versus background suffixes and delayed
 caret updates after the expected pasted text appears. A different draft still prevents
 confirming an insertion.
@@ -139,20 +145,26 @@ The instruction-echo regression sends a contaminated model response through the
 real correction session and checks that no draft write occurs. It also covers
 punctuation/spacing changes, legitimate quoted replacement text, and the scoped
 `S.G. Lang` / `L.A.N.G.` spelling case. With `OMNI_CORRECTION_LIVE_TEST=1`, its
-runner additionally checks that case against the default local model plus client
-spelling handling. That is a functional check, not model-only accuracy evidence.
+runner additionally checks the same client-side spelling path without a model request. That is a functional check, not model-only accuracy evidence.
 
 The optional local-model check uses synthetic text only:
 
 ```bash
 OMNI_CORRECTION_LIVE_TEST=1 bash examples/macos_dictation/correction_live_test.sh
 OMNI_CORRECTION_LIVE_TEST=1 bash examples/macos_dictation/background_correction_test.sh
+OMNI_CORRECTION_LIVE_TEST=1 bash examples/macos_dictation/correction_accuracy_test.sh
+OMNI_CORRECTION_LIVE_TEST=1 bash examples/macos_dictation/semantic_editing_live_test.sh
 ```
 
 It checks name, number and negation edits against exact expected strings. It does
 not establish broad model accuracy or test microphone, keyboard or editor delivery.
 `OMNI_CORRECTION_URL` and `OMNI_CORRECTION_MODEL` override the documented defaults;
-the URL must still pass the client's loopback-only validation.
+the URL must still pass the client's loopback-only validation. The accuracy and
+semantic-editing scripts repeat their fixed development cases and report mean ±
+sample standard deviation. Read every output: exact/keyword criteria are limited,
+and a rejected edit only passes where a clarification was explicitly expected.
+Service or response-format failures must not count as successful clarification.
+These are diagnostic evaluations, not release gates or population accuracy estimates.
 
 For two user-supplied audio files, run `audio_correction_test.sh` with
 `OMNI_CORRECTION_AUDIO_TEST=1`, the original recording path, the correction recording

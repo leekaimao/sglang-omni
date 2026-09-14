@@ -16,15 +16,15 @@ private enum BackgroundCorrectionTests {
         let instruction = "S G lang是S G L A N G。"
         let background = "项目是 SGLang-Omni。"
         let stubbed = OllamaCorrector(transport: LocalHTTPTransport(protocolClasses: [HTTPStub.self]))
-        let content = #"{"text":"大家好，我们是S.G.L.A.N.G组合。"}"#
-        let bytes = try JSONSerialization.data(withJSONObject: ["done": true, "done_reason": "stop", "message": ["content": content]])
-        HTTPStub.reset(["/api/chat": .http(200, String(decoding: bytes, as: UTF8.self))])
+        HTTPStub.reset([:])
         let result = try await stubbed.correct(original: original, instruction: instruction, personalBackground: background)
         precondition(result.correctedText == "大家好，我们是SGLang组合。", "Explicit spelling must not acquire a background suffix")
-        let payload = try JSONSerialization.jsonObject(with: Data(HTTPStub.requests[0].body.utf8)) as! [String: Any]
+        precondition(HTTPStub.requests.isEmpty, "Explicit spelling should not wait for the model")
+        let request = try OllamaCorrector.request(original: "项目待定。", instruction: "按背景确定项目", personalBackground: background)
+        let payload = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
         let messages = payload["messages"] as! [[String: String]]
         let input = messages.last!["content"]!
-        precondition(input.contains(background) && input.contains(original) && input.hasSuffix("S G lang是SGLang。"))
+        precondition(input.contains(background) && input.contains("项目待定。") && input.hasSuffix("按背景确定项目"))
 
         // Automatic polishing retains its narrower contract. A bare project name
         // must not silently authorize expanding another valid project name.

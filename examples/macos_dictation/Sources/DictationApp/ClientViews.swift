@@ -165,7 +165,7 @@ struct ClientSettingsView: View {
                     }
                     Text("首次授权后回到要输入文字的位置，重新开始录音。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
-                    Text("更正上一段：在原输入框双击 Option，说出修改意见，再双击结束。独立于轻度整理开关，使用本地 Ollama。")
+                    Text("更正上一段：在原输入框双击 Option，说出修改意见，再双击结束。例如“把第二个张三改成李四”。独立于轻度整理开关。")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Divider()
