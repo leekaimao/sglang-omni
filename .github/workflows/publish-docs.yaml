@@ -46,6 +46,10 @@ jobs:
           make compile
           make html
 
+      - name: Build Chinese documentation
+        run: |
+          sphinx-build -b html docs/zh docs/_build/html/zh
+
       - name: Add .nojekyll file
         run: |
           touch ./docs/_build/html/.nojekyll

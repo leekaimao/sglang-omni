@@ -86,7 +86,9 @@ master_doc = "index"
 
 language = "en"
 
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# The zh_CN translation tree builds separately with docs/zh/conf.py, so keep
+# it out of the English build.
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "zh"]
 
 pygments_style = "sphinx"
 
@@ -100,6 +102,13 @@ html_last_updated_fmt = ""
 html_theme_options = {
     "repository_url": "https://github.com/sgl-project/sglang-omni",
     "repository_branch": "main/docs",
+    # Site-root-relative link so the switcher works on both
+    # sgl-project.github.io and leekaimao.github.io GitHub Pages hosts.
+    "extra_footer": (
+        '<div class="language-switcher">'
+        'English | <a href="/sglang-omni/zh/index.html">中文</a>'
+        "</div>"
+    ),
     "show_navbar_depth": 3,
     "max_navbar_depth": 4,
     "collapse_navbar": True,
